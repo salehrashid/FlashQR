@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:qr_scanner/navigator/nav_router.dart';
+import 'package:qr_scanner/util/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatelessWidget {
@@ -59,7 +60,7 @@ class HomePage extends StatelessWidget {
           SpeedDialChild(
             child: const Icon(Icons.photo),
             label: 'Gallery',
-            // onTap: () => NavRouter.instance.pushNamed("/qr-code-generator"),
+            onTap: pickImageFromGallery,
           ),
         ],
       ),
