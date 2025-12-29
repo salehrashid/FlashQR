@@ -47,6 +47,7 @@ dependencies:
   mobile_scanner: ^7.1.3
   pretty_qr_code: ^3.5.0
   flutter_speed_dial: ^7.0.0
+  shared_preferences: ^2.5.4
 ```
 
 * **Flutter** — main framework
@@ -54,6 +55,7 @@ dependencies:
 * **pretty_qr_code** — stylish and customizable QR generator
 * **url_launcher** — open URLs directly from scan results
 * **flutter_speed_dial** — floating action menu for quick scan/generate actions
+* **shared_preferences** — store QR code scan history
 
 ---
 
