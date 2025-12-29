@@ -39,6 +39,7 @@ dependencies:
   pretty_qr_code: ^3.5.0
   flutter_speed_dial: ^7.0.0
   image_picker: ^1.2.1
+  shared_preferences: ^2.5.4
 
 dev_dependencies:
   flutter_test:
