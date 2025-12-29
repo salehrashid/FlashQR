@@ -117,7 +117,16 @@ class _HomePageState extends State<HomePage> {
           SpeedDialChild(
             child: const Icon(Icons.qr_code_scanner),
             label: 'Scan QR',
-            onTap: () => NavRouter.instance.pushNamed("/qr-code-scanner"),
+            onTap: () async {
+              final result = await Navigator.pushNamed(
+                context,
+                "/qr-code-scanner",
+              );
+
+              if (result != null && result is String) {
+                await _addItem(result);
+              }
+            },
           ),
           SpeedDialChild(
             child: const Icon(Icons.photo),
