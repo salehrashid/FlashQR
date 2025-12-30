@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:qr_scanner/navigator/nav_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class QRCodeScanner extends StatefulWidget {
@@ -13,6 +12,7 @@ class QRCodeScanner extends StatefulWidget {
 class _QRCodeScannerState extends State<QRCodeScanner> {
   final MobileScannerController _controller = MobileScannerController();
   bool _isScanned = false;
+  bool _isTorchOn = false;
 
   @override
   void dispose() {
@@ -61,9 +61,13 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
                     final uri = Uri.parse(finalValue);
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
 
-                    if (mounted) {
-                      Navigator.pop(context, finalValue);
-                    }
+                    if (!mounted) return;
+
+                    // ❗ POP DIALOG
+                    Navigator.of(context).pop();
+
+                    // ❗ POP SCANNER PAGE + RETURN VALUE
+                    Navigator.of(context, rootNavigator: true).pop(finalValue);
                   },
                   child: const Text("Open"),
                 ),
@@ -80,25 +84,60 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text("QR Code Scanner"),
       ),
-      body: Stack(
-        children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final screenWidth = constraints.maxWidth;
+          final screenHeight = constraints.maxHeight;
+          final scanBoxSize = screenWidth * 0.7;
+          final scanBoxTop = (screenHeight - scanBoxSize) / 2;
+          final torchTop = scanBoxTop + scanBoxSize + 24;
 
-          const ScannerOverlay(),
+          return Stack(
+            children: [
+              // Camera
+              MobileScanner(controller: _controller, onDetect: _onDetect),
 
-          // Hint text
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.black54,
-              child: const Text(
-                "Arahkan QR Code ke dalam kotak",
-                style: TextStyle(color: Colors.white),
+              const ScannerOverlay(),
+
+              Positioned(
+                top: torchTop,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: IconButton(
+                    iconSize: 40,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      padding: const EdgeInsets.all(12),
+                    ),
+                    icon: Icon(
+                      _isTorchOn ? Icons.flash_on : Icons.flash_off,
+                      color: Colors.white,
+                    ),
+                    onPressed: () async {
+                      await _controller.toggleTorch();
+                      setState(() {
+                        _isTorchOn = !_isTorchOn;
+                      });
+                    },
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.black54,
+                  child: const Text(
+                    "Point the QR Code into the box",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -109,53 +148,59 @@ class ScannerOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double size = constraints.maxWidth * 0.7;
-
-        return Stack(
-          children: [
-            // Dark overlay
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(
-                Colors.black.withOpacity(0.6),
-                BlendMode.srcOut,
-              ),
-              child: Stack(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    color: Colors.black,
-                  ),
-                  Center(
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Scanner box border
-            Center(
-              child: Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white, width: 3),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    return CustomPaint(
+      size: MediaQuery.of(context).size,
+      painter: _ScannerOverlayPainter(),
     );
   }
+}
+
+class _ScannerOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final overlayPaint = Paint()..color = Colors.black.withOpacity(0.6);
+
+    // Ukuran scan box
+    const scanBoxSize = 260.0;
+    const borderRadius = 16.0;
+
+    final center = Offset(size.width / 2, size.height / 2 - 40);
+
+    final scanRect = Rect.fromCenter(
+      center: center,
+      width: scanBoxSize,
+      height: scanBoxSize,
+    );
+
+    final roundedRect = RRect.fromRectAndRadius(
+      scanRect,
+      const Radius.circular(borderRadius),
+    );
+
+    final backgroundPath =
+        Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final holePath = Path()..addRRect(roundedRect);
+
+    // Gabungkan → background MINUS hole
+    final finalPath = Path.combine(
+      PathOperation.difference,
+      backgroundPath,
+      holePath,
+    );
+
+    canvas.drawPath(finalPath, overlayPaint);
+
+    // Border scan box
+    final borderPaint =
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+
+    canvas.drawRRect(roundedRect, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -35,16 +35,19 @@ class _HomePageState extends State<HomePage> {
     await prefs.setStringList('qr_history', items);
   }
 
-  /// Add item (example usage)
+  /// Add item
   Future<void> _addItem(String value) async {
     setState(() => items.insert(0, value));
     await _saveItems();
   }
 
   /// Remove item
-  Future<void> _removeItem(int index) async {
-    setState(() => items.removeAt(index));
-    await _saveItems();
+  void _removeItem(int index) {
+    setState(() {
+      items.removeAt(index); // remove immediately
+    });
+
+    _saveItems(); // async, but NOT awaited
   }
 
   @override
@@ -58,7 +61,7 @@ class _HomePageState extends State<HomePage> {
           items.isEmpty
               ? const Center(
                 child: Text(
-                  "No data",
+                  "No data, tap the + button to add",
                   style: TextStyle(fontSize: 18, color: Colors.grey),
                 ),
               )
@@ -75,7 +78,7 @@ class _HomePageState extends State<HomePage> {
                       child: const Icon(Icons.delete, color: Colors.white),
                     ),
                     confirmDismiss: (_) async {
-                      return await showDialog(
+                      final shouldDelete = await showDialog<bool>(
                         context: context,
                         builder:
                             (context) => AlertDialog(
@@ -96,8 +99,13 @@ class _HomePageState extends State<HomePage> {
                               ],
                             ),
                       );
+
+                      if (shouldDelete == true) {
+                        _removeItem(index); // ✅ manual removal
+                      }
+
+                      return false; // ✅ prevent Dismissible auto-removal
                     },
-                    onDismissed: (_) => _removeItem(index),
                     child: ListTile(
                       title: Text(items[index]),
                       onTap: () => _openDialog(items[index]),
@@ -151,7 +159,10 @@ class _HomePageState extends State<HomePage> {
                 child: const Text("Cancel"),
               ),
               TextButton(
-                onPressed: () => launchURL(value),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  launchURL(value);
+                },
                 child: const Text("Open"),
               ),
             ],
