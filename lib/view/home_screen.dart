@@ -139,7 +139,7 @@ class _HomePageState extends State<HomePage> {
           SpeedDialChild(
             child: const Icon(Icons.photo),
             label: 'Gallery',
-            onTap: pickImageFromGallery,
+            onTap: () => pickImageFromGallery(context, _addItem),
           ),
         ],
       ),
