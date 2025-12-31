@@ -1,16 +1,13 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:media_scanner/media_scanner.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
-import 'package:image/image.dart' as img;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+import '../services/permission_service.dart';
+import '../services/qr_generator_service.dart';
+import '../services/storage_service.dart';
+import '../models/qr_item.dart';
 
 class QRCodeGenerator extends StatefulWidget {
   const QRCodeGenerator({super.key});
@@ -21,20 +18,13 @@ class QRCodeGenerator extends StatefulWidget {
 
 class _QRCodeGeneratorState extends State<QRCodeGenerator> {
   final TextEditingController _urlController = TextEditingController();
-  final _nameController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   final GlobalKey _qrKey = GlobalKey();
 
   String _format = 'jpg';
-  String _sanitizeFileName(String input) {
-    return input
-        .trim()
-        .replaceAll(RegExp(r'[^\w\s-]'), '')
-        .replaceAll(' ', '_')
-        .toLowerCase();
-  }
-
   bool _initialized = false;
   int? editIndex;
+
   bool get isEditMode => editIndex != null;
 
   @override
@@ -56,6 +46,13 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
   }
 
   @override
+  void dispose() {
+    _urlController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -65,92 +62,22 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final maxHeight = constraints.maxHeight;
-
-          final qrSize = maxHeight * 0.35;
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: maxHeight),
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: _urlController,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: "URL",
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-
+                  _buildUrlField(),
                   const SizedBox(height: 16),
-
-                  TextField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: "QR Name",
-                      hintText: "E.g: QR Code 1",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-
+                  _buildNameField(),
                   const SizedBox(height: 16),
-
-                  Center(
-                    child: RepaintBoundary(
-                      key: _qrKey,
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: SizedBox(
-                          width: qrSize,
-                          height: qrSize,
-                          child: PrettyQrView.data(
-                            data:
-                                _urlController.text.isEmpty
-                                    ? ' '
-                                    : _urlController.text,
-                            decoration: const PrettyQrDecoration(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
+                  _buildQRPreview(constraints.maxHeight * 0.35),
                   const SizedBox(height: 16),
-
-                  /// Format selector
-                  DropdownButtonFormField<String>(
-                    value: _format,
-                    items: const [
-                      DropdownMenuItem(value: 'jpg', child: Text('JPG')),
-                      DropdownMenuItem(value: 'pdf', child: Text('PDF')),
-                    ],
-                    onChanged: (v) => setState(() => _format = v!),
-                    decoration: const InputDecoration(
-                      labelText: "Output format",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-
+                  _buildFormatSelector(),
                   const SizedBox(height: 20),
-
-                  SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _generateAndSave,
-                      child: Text(
-                        isEditMode ? "Update & Save" : "Generate & Save",
-                      ),
-                    ),
-                  ),
-
+                  _buildSaveButton(),
                   SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
                 ],
               ),
@@ -161,137 +88,147 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
     );
   }
 
-  Uint8List _convertPngToJpgWithWhiteBg(Uint8List pngBytes) {
-    final pngImage = img.decodeImage(pngBytes)!;
-
-    final whiteBg = img.Image(width: pngImage.width, height: pngImage.height);
-
-    img.fill(whiteBg, color: img.ColorRgb8(255, 255, 255));
-    img.compositeImage(whiteBg, pngImage);
-
-    return Uint8List.fromList(img.encodeJpg(whiteBg, quality: 100));
+  Widget _buildUrlField() {
+    return TextField(
+      controller: _urlController,
+      keyboardType: TextInputType.url,
+      decoration: const InputDecoration(
+        labelText: "URL",
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (_) => setState(() {}),
+    );
   }
 
-  /// ================= CORE LOGIC =================
+  Widget _buildNameField() {
+    return TextField(
+      controller: _nameController,
+      decoration: const InputDecoration(
+        labelText: "QR Name",
+        hintText: "E.g: QR Code 1",
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
+  Widget _buildQRPreview(double qrSize) {
+    return Center(
+      child: RepaintBoundary(
+        key: _qrKey,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SizedBox(
+            width: qrSize,
+            height: qrSize,
+            child: PrettyQrView.data(
+              data:
+                  _urlController.text.isEmpty ? ' ' : _urlController.text,
+              decoration: const PrettyQrDecoration(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatSelector() {
+    return DropdownButtonFormField<String>(
+      value: _format,
+      items: const [
+        DropdownMenuItem(value: 'jpg', child: Text('JPG')),
+        DropdownMenuItem(value: 'pdf', child: Text('PDF')),
+      ],
+      onChanged: (v) => setState(() => _format = v!),
+      decoration: const InputDecoration(
+        labelText: "Output format",
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      height: 48,
+      child: ElevatedButton(
+        onPressed: _generateAndSave,
+        child: Text(isEditMode ? "Update & Save" : "Generate & Save"),
+      ),
+    );
+  }
+
+  // ========== CORE LOGIC ==========
 
   Future<void> _generateAndSave() async {
     final url = _urlController.text.trim();
     final qrName = _nameController.text.trim();
 
-    if (url.isEmpty || qrName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("QR Name and URL are required fields")),
-      );
-      return;
-    }
+    if (!_validateInputs(url, qrName)) return;
 
-    final granted = await _requestStoragePermission();
+    final granted = await PermissionService.requestStoragePermission();
     if (!granted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Storage permission denied")),
-      );
+      _showMessage("Storage permission denied");
       return;
     }
 
     try {
-      final boundary =
-          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-
-      final image = await boundary.toImage(pixelRatio: 3);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final pngBytes = byteData!.buffer.asUint8List();
-      final qrGenerateHistoryKey = "qr_generate_history";
-
-      final dir = await _getFlashQRDir();
-
-      final safeName = _sanitizeFileName(qrName);
-
-      late final String savedPath;
-
-      if (_format == 'pdf') {
-        savedPath = "${dir.path}/$safeName.pdf";
-
-        final pdf = pw.Document();
-        final imgPdf = pw.MemoryImage(pngBytes);
-
-        pdf.addPage(pw.Page(build: (_) => pw.Center(child: pw.Image(imgPdf))));
-
-        await File(savedPath).writeAsBytes(await pdf.save());
-      } else {
-        savedPath = "${dir.path}/$safeName.jpg";
-
-        final jpgBytes = _convertPngToJpgWithWhiteBg(pngBytes);
-        await File(savedPath).writeAsBytes(jpgBytes);
-      }
-
-      await MediaScanner.loadMedia(path: savedPath);
-
-      final prefs = await SharedPreferences.getInstance();
-      final history = prefs.getStringList(qrGenerateHistoryKey) ?? [];
-
-      final value = "$qrName • $url";
-
-      if (isEditMode) {
-        // update
-        if (editIndex! < history.length) {
-          history[editIndex!] = value;
-        }
-      } else {
-        // create
-        history.insert(0, value);
-      }
-
-      await prefs.setStringList(qrGenerateHistoryKey, history);
+      final pngBytes = await _captureQRImage();
+      await _saveQRCode(pngBytes, qrName);
+      await _updateHistory(qrName, url);
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Saved to Download/FlashQR")),
-      );
-
+      _showMessage("Saved to Download/FlashQR");
       Navigator.pop(context, {"name": qrName, "url": url});
     } catch (e, s) {
       debugPrint("Error: $e");
       debugPrintStack(stackTrace: s);
+      _showMessage("Failed to save QR code");
     }
   }
 
-  bool _isRequestingPermission = false;
+  bool _validateInputs(String url, String qrName) {
+    if (url.isEmpty || qrName.isEmpty) {
+      _showMessage("QR Name and URL are required fields");
+      return false;
+    }
+    return true;
+  }
 
-  Future<bool> _requestStoragePermission() async {
-    if (_isRequestingPermission) return false;
-    _isRequestingPermission = true;
+  Future<Uint8List> _captureQRImage() async {
+    final boundary =
+        _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
 
-    try {
-      if (Platform.isAndroid) {
-        final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+    final image = await boundary.toImage(pixelRatio: 3);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
 
-        Permission permission;
-
-        if (sdk >= 33) {
-          // Android 13+
-          permission = Permission.photos;
-        } else {
-          // Android 8–12
-          permission = Permission.storage;
-        }
-
-        final status = await permission.request();
-        return status.isGranted;
-      }
-
-      return true;
-    } finally {
-      _isRequestingPermission = false;
+  Future<void> _saveQRCode(Uint8List pngBytes, String qrName) async {
+    if (_format == 'pdf') {
+      await QRGeneratorService.saveAsPdf(pngBytes, qrName);
+    } else {
+      await QRGeneratorService.saveAsJpg(pngBytes, qrName);
     }
   }
 
-  Future<Directory> _getFlashQRDir() async {
-    final dir = Directory('/storage/emulated/0/Download/FlashQR');
+  Future<void> _updateHistory(String qrName, String url) async {
+    final qrItem = QRItem(name: qrName, url: url);
+    final value = qrItem.toStorageString();
 
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+    if (isEditMode) {
+      await StorageService.updateGenerateItem(editIndex!, value);
+    } else {
+      await StorageService.addGenerateItem(value);
     }
-    return dir;
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 }

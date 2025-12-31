@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:qr_scanner/navigator/nav_router.dart';
-import 'package:qr_scanner/util/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:qr_scanner/services/storage_service.dart';
+import 'package:qr_scanner/widgets/speed_dial_menu.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../models/qr_item.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,9 +12,6 @@ class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
 }
-
-const scanHistoryKey = 'qr_scan_history';
-const generateHistoryKey = 'qr_generate_history';
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
@@ -41,31 +39,39 @@ class _HomePageState extends State<HomePage>
     _loadItems();
   }
 
-  Future<void> _loadItems() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      scanItems = prefs.getStringList(scanHistoryKey) ?? [];
-      generateItems = prefs.getStringList(generateHistoryKey) ?? [];
-    });
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
-  Future<void> _saveScanItems() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(scanHistoryKey, scanItems);
+  // ========== DATA MANAGEMENT ==========
+
+  Future<void> _loadItems() async {
+    final scan = await StorageService.loadScanHistory();
+    final generate = await StorageService.loadGenerateHistory();
+    
+    setState(() {
+      scanItems = scan;
+      generateItems = generate;
+    });
   }
 
   Future<void> _addScanItem(String value) async {
-    setState(() => scanItems.insert(0, value));
-    await _saveScanItems();
+    await StorageService.addScanItem(value);
+    await _loadItems();
   }
 
-  Future<void> _removeGeneratedItem(int index) async {
+  Future<void> _removeItem(int index) async {
     setState(() {
-      generateItems.removeAt(index);
+      currentItems.removeAt(index);
     });
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(generateHistoryKey, generateItems);
+    if (isScanTab) {
+      await StorageService.saveScanHistory(scanItems);
+    } else {
+      await StorageService.saveGenerateHistory(generateItems);
+    }
   }
 
   Future<void> _deleteSelected() async {
@@ -81,17 +87,14 @@ class _HomePageState extends State<HomePage>
       selectionMode = false;
     });
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      isScanTab ? scanHistoryKey : generateHistoryKey,
-      currentItems,
-    );
+    if (isScanTab) {
+      await StorageService.saveScanHistory(scanItems);
+    } else {
+      await StorageService.saveGenerateHistory(generateItems);
+    }
   }
 
-  void _removeScanItem(int index) {
-    setState(() => scanItems.removeAt(index));
-    _saveScanItems();
-  }
+  // ========== SELECTION MODE ==========
 
   void _enterSelectionMode(int index) {
     setState(() {
@@ -130,6 +133,8 @@ class _HomePageState extends State<HomePage>
     });
   }
 
+  // ========== UI BUILD ==========
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -140,51 +145,76 @@ class _HomePageState extends State<HomePage>
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title:
-              selectionMode
-                  ? Text("${currentSelected.length} selected")
-                  : const Text("FlashQR"),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          leading:
-              selectionMode
-                  ? IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: _exitSelectionMode,
-                  )
-                  : null,
-          actions:
-              selectionMode
-                  ? [
-                    IconButton(
-                      icon: const Icon(Icons.select_all),
-                      onPressed: _selectAll,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed:
-                          currentSelected.isEmpty ? null : _deleteSelected,
-                    ),
-                  ]
-                  : [],
-          bottom: TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: "Scan History"),
-              Tab(text: "Generate History"),
-            ],
-          ),
-        ),
+        appBar: _buildAppBar(),
         body: TabBarView(
           controller: _tabController,
           children: [_buildScanTab(), _buildGenerateTab()],
         ),
-        floatingActionButton: selectionMode ? null : _buildSpeedDial(),
+        floatingActionButton: selectionMode ? null : _buildFloatingButton(),
       ),
     );
   }
 
-  /// ================= TAB 1 — SCAN =================
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title:
+          selectionMode
+              ? Text("${currentSelected.length} selected")
+              : const Text("FlashQR"),
+      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      leading:
+          selectionMode
+              ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectionMode,
+              )
+              : null,
+      actions:
+          selectionMode
+              ? [
+                IconButton(
+                  icon: const Icon(Icons.select_all),
+                  onPressed: _selectAll,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: currentSelected.isEmpty ? null : _deleteSelected,
+                ),
+              ]
+              : [],
+      bottom: TabBar(
+        controller: _tabController,
+        tabs: const [
+          Tab(text: "Scan History"),
+          Tab(text: "Generate History"),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingButton() {
+    return SpeedDialMenu(
+      onScanResult: (value) async {
+        await _addScanItem(value);
+        _tabController.animateTo(0);
+      },
+      onGeneratePressed: () async {
+        await NavRouter.instance.pushNamed("/qr-code-generator");
+        if (!mounted) return;
+        await _loadItems();
+        _tabController.animateTo(1);
+      },
+      onScanPressed: () async {
+        final result = await Navigator.pushNamed(context, "/qr-code-scanner");
+        if (result is String) {
+          await _addScanItem(result);
+          _tabController.animateTo(0);
+        }
+      },
+    );
+  }
+
+  // ========== SCAN TAB ==========
 
   Widget _buildScanTab() {
     if (scanItems.isEmpty) {
@@ -193,206 +223,117 @@ class _HomePageState extends State<HomePage>
 
     return ListView.builder(
       itemCount: scanItems.length,
-      itemBuilder: (context, index) {
-        return Dismissible(
-          key: ValueKey(scanItems[index]),
-
-          direction:
-              selectionMode
-                  ? DismissDirection.none
-                  : DismissDirection.endToStart,
-
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            color: Colors.red,
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-
-          confirmDismiss:
-              selectionMode
-                  ? null
-                  : (_) async {
-                    final ok = await _confirmDelete();
-                    if (ok) _removeScanItem(index);
-                    return false;
-                  },
-
-          child: ListTile(
-            leading:
-                selectionMode
-                    ? Checkbox(
-                      value: selectedScanIndexes.contains(index),
-                      onChanged: (_) => _toggleSelection(index),
-                    )
-                    : null,
-
-            title: Text(scanItems[index]),
-
-            onTap: () {
-              if (selectionMode) {
-                _toggleSelection(index);
-              } else {
-                _openDialog(scanItems[index]);
-              }
-            },
-
-            onLongPress: () => _enterSelectionMode(index),
-          ),
-        );
-      },
+      itemBuilder: (context, index) => _buildScanItem(index),
     );
   }
 
-  /// ================= TAB 2 — GENERATE =================
+  Widget _buildScanItem(int index) {
+    return Dismissible(
+      key: ValueKey(scanItems[index]),
+      direction:
+          selectionMode ? DismissDirection.none : DismissDirection.endToStart,
+      background: _buildDismissBackground(),
+      confirmDismiss:
+          selectionMode
+              ? null
+              : (_) async {
+                final ok = await _confirmDelete();
+                if (ok) await _removeItem(index);
+                return false;
+              },
+      child: ListTile(
+        leading:
+            selectionMode
+                ? Checkbox(
+                  value: selectedScanIndexes.contains(index),
+                  onChanged: (_) => _toggleSelection(index),
+                )
+                : null,
+        title: Text(scanItems[index]),
+        onTap: () {
+          if (selectionMode) {
+            _toggleSelection(index);
+          } else {
+            _openDialog(scanItems[index]);
+          }
+        },
+        onLongPress: () => _enterSelectionMode(index),
+      ),
+    );
+  }
+
+  // ========== GENERATE TAB ==========
 
   Widget _buildGenerateTab() {
     if (generateItems.isEmpty) {
       return const Center(child: Text("No generated QR. Click + to generate"));
     }
 
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            itemCount: generateItems.length,
-            itemBuilder: (_, index) {
-              final item = generateItems[index];
-
-              return Dismissible(
-                key: ValueKey(item),
-                direction:
-                    selectionMode
-                        ? DismissDirection.none
-                        : DismissDirection.endToStart,
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  color: Colors.red,
-                  child: const Icon(Icons.delete, color: Colors.white),
-                ),
-                confirmDismiss:
-                    selectionMode
-                        ? null
-                        : (_) async {
-                          final ok = await _confirmDelete();
-                          if (ok) _removeGeneratedItem(index);
-                          return false;
-                        },
-                child: ListTile(
-                  leading:
-                      selectionMode
-                          ? Checkbox(
-                            value: selectedGenerateIndexes.contains(index),
-                            onChanged: (_) => _toggleSelection(index),
-                          )
-                          : const Icon(Icons.qr_code),
-                  title: Text(item),
-                  onTap: () async {
-                    if (selectionMode) {
-                      _toggleSelection(index);
-                      return;
-                    }
-
-                    final parts = item.split(' • ');
-                    await NavRouter.instance.pushNamed(
-                      "/qr-code-generator",
-                      arguments: {
-                        "index": index,
-                        "name": parts.first,
-                        "url": parts.length > 1 ? parts.last : '',
-                      },
-                    );
-                    await _loadItems();
-                  },
-                  onLongPress: () => _enterSelectionMode(index),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+    return ListView.builder(
+      itemCount: generateItems.length,
+      itemBuilder: (context, index) => _buildGenerateItem(index),
     );
   }
 
-  /// ================= SPEED DIAL =================
-  void _showGalleryOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+  Widget _buildGenerateItem(int index) {
+    final item = generateItems[index];
+
+    return Dismissible(
+      key: ValueKey(item),
+      direction:
+          selectionMode ? DismissDirection.none : DismissDirection.endToStart,
+      background: _buildDismissBackground(),
+      confirmDismiss:
+          selectionMode
+              ? null
+              : (_) async {
+                final ok = await _confirmDelete();
+                if (ok) await _removeItem(index);
+                return false;
+              },
+      child: ListTile(
+        leading:
+            selectionMode
+                ? Checkbox(
+                  value: selectedGenerateIndexes.contains(index),
+                  onChanged: (_) => _toggleSelection(index),
+                )
+                : const Icon(Icons.qr_code),
+        title: Text(item),
+        onTap: () => _onGenerateItemTap(index, item),
+        onLongPress: () => _enterSelectionMode(index),
       ),
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.image),
-                title: const Text('Scan from Image'),
-                onTap: () {
-                  Navigator.pop(context);
-                  pickImageFromGallery(context, _addScanItem);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.picture_as_pdf),
-                title: const Text('Scan from PDF'),
-                onTap: () {
-                  Navigator.pop(context);
-                  pickPdfFromGallery(context, _addScanItem);
-                },
-              ),
-            ],
-          ),
-        );
+    );
+  }
+
+  Future<void> _onGenerateItemTap(int index, String item) async {
+    if (selectionMode) {
+      _toggleSelection(index);
+      return;
+    }
+
+    final qrItem = QRItem.fromStorageString(item);
+    await NavRouter.instance.pushNamed(
+      "/qr-code-generator",
+      arguments: {
+        "index": index,
+        "name": qrItem.name,
+        "url": qrItem.url,
       },
     );
+    await _loadItems();
   }
 
-  Widget _buildSpeedDial() {
-    return SpeedDial(
-      icon: Icons.add,
-      activeIcon: Icons.close,
-      children: [
-        SpeedDialChild(
-          child: const Icon(Icons.qr_code),
-          label: 'QR Code Generator',
-          onTap: () async {
-            await NavRouter.instance.pushNamed("/qr-code-generator");
+  // ========== UTILITY WIDGETS ==========
 
-            if (!mounted) return;
-
-            await _loadItems();
-
-            _tabController.animateTo(1);
-          },
-        ),
-        SpeedDialChild(
-          child: const Icon(Icons.qr_code_scanner),
-          label: 'Scan QR',
-          onTap: () async {
-            final result = await Navigator.pushNamed(
-              context,
-              "/qr-code-scanner",
-            );
-
-            if (result is String) {
-              await _addScanItem(result);
-              _tabController.animateTo(0);
-            }
-          },
-        ),
-        SpeedDialChild(
-          child: const Icon(Icons.photo),
-          label: 'Gallery',
-          onTap: () => _showGalleryOptions(context),
-        ),
-      ],
+  Widget _buildDismissBackground() {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      color: Colors.red,
+      child: const Icon(Icons.delete, color: Colors.white),
     );
   }
-
-  /// ================= UTIL =================
 
   Future<bool> _confirmDelete() async {
     return await showDialog<bool>(
@@ -431,7 +372,7 @@ class _HomePageState extends State<HomePage>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  launchURL(value);
+                  _launchURL(value);
                 },
                 child: const Text("Open"),
               ),
@@ -440,7 +381,7 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  void launchURL(String urlString) async {
+  void _launchURL(String urlString) async {
     final uri = Uri.parse(urlString);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw Exception("Could not launch $urlString");

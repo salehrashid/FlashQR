@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/scanner_overlay.dart';
+import '../services/qr_scanner_service.dart';
 
 class QRCodeScanner extends StatefulWidget {
   const QRCodeScanner({super.key});
@@ -28,53 +30,59 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
 
     if (value != null) {
       setState(() => _isScanned = true);
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder:
-            (_) => AlertDialog(
-              title: const Text("QR Code Result"),
-              content: Text(value),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    await _controller.stop();
-                    if (mounted) {
-                      Navigator.of(
-                        context,
-                      ).pushNamedAndRemoveUntil("/", (route) => false);
-                    }
-                  },
-                  child: const Text("Cancel"),
-                ),
-
-                TextButton(
-                  onPressed: () async {
-                    String finalValue = value.trim();
-
-                    if (!finalValue.startsWith('http://') &&
-                        !finalValue.startsWith('https://')) {
-                      finalValue = 'https://$finalValue';
-                    }
-
-                    final uri = Uri.parse(finalValue);
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-                    if (!mounted) return;
-
-                    // ❗ POP DIALOG
-                    Navigator.of(context).pop();
-
-                    // ❗ POP SCANNER PAGE + RETURN VALUE
-                    Navigator.of(context, rootNavigator: true).pop(finalValue);
-                  },
-                  child: const Text("Open"),
-                ),
-              ],
-            ),
-      );
+      _showResultDialog(value);
     }
+  }
+
+  void _showResultDialog(String value) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _buildResultDialog(value),
+    );
+  }
+
+  Widget _buildResultDialog(String value) {
+    return AlertDialog(
+      title: const Text("QR Code Result"),
+      content: Text(value),
+      actions: [
+        TextButton(
+          onPressed: _handleCancel,
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          onPressed: () => _handleOpen(value),
+          child: const Text("Open"),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleCancel() async {
+    await _controller.stop();
+    if (mounted) {
+      Navigator.of(context).pushNamedAndRemoveUntil("/", (route) => false);
+    }
+  }
+
+  Future<void> _handleOpen(String value) async {
+    final formattedUrl = QRScannerService.formatUrl(value);
+    final uri = Uri.parse(formattedUrl);
+    
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!mounted) return;
+
+    Navigator.of(context).pop(); // Close dialog
+    Navigator.of(context, rootNavigator: true).pop(formattedUrl); // Close scanner
+  }
+
+  Future<void> _toggleTorch() async {
+    await _controller.toggleTorch();
+    setState(() {
+      _isTorchOn = !_isTorchOn;
+    });
   }
 
   @override
@@ -94,113 +102,50 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
 
           return Stack(
             children: [
-              // Camera
               MobileScanner(controller: _controller, onDetect: _onDetect),
-
               const ScannerOverlay(),
-
-              Positioned(
-                top: torchTop,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: IconButton(
-                    iconSize: 40,
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      padding: const EdgeInsets.all(12),
-                    ),
-                    icon: Icon(
-                      _isTorchOn ? Icons.flash_on : Icons.flash_off,
-                      color: Colors.white,
-                    ),
-                    onPressed: () async {
-                      await _controller.toggleTorch();
-                      setState(() {
-                        _isTorchOn = !_isTorchOn;
-                      });
-                    },
-                  ),
-                ),
-              ),
-
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  color: Colors.black54,
-                  child: const Text(
-                    "Point the QR Code into the box",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
+              _buildTorchButton(torchTop),
+              _buildBottomText(),
             ],
           );
         },
       ),
     );
   }
-}
 
-class ScannerOverlay extends StatelessWidget {
-  const ScannerOverlay({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: MediaQuery.of(context).size,
-      painter: _ScannerOverlayPainter(),
+  Widget _buildTorchButton(double top) {
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: IconButton(
+          iconSize: 40,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black54,
+            padding: const EdgeInsets.all(12),
+          ),
+          icon: Icon(
+            _isTorchOn ? Icons.flash_on : Icons.flash_off,
+            color: Colors.white,
+          ),
+          onPressed: _toggleTorch,
+        ),
+      ),
     );
   }
-}
 
-class _ScannerOverlayPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final overlayPaint = Paint()..color = Colors.black.withOpacity(0.6);
-
-    // Ukuran scan box
-    const scanBoxSize = 260.0;
-    const borderRadius = 16.0;
-
-    final center = Offset(size.width / 2, size.height / 2 - 40);
-
-    final scanRect = Rect.fromCenter(
-      center: center,
-      width: scanBoxSize,
-      height: scanBoxSize,
+  Widget _buildBottomText() {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        color: Colors.black54,
+        child: const Text(
+          "Point the QR Code into the box",
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
     );
-
-    final roundedRect = RRect.fromRectAndRadius(
-      scanRect,
-      const Radius.circular(borderRadius),
-    );
-
-    final backgroundPath =
-        Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    final holePath = Path()..addRRect(roundedRect);
-
-    // Gabungkan → background MINUS hole
-    final finalPath = Path.combine(
-      PathOperation.difference,
-      backgroundPath,
-      holePath,
-    );
-
-    canvas.drawPath(finalPath, overlayPaint);
-
-    // Border scan box
-    final borderPaint =
-        Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3;
-
-    canvas.drawRRect(roundedRect, borderPaint);
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

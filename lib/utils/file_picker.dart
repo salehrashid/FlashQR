@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qr_scanner/view/qr_code_link_preview.dart';
+import 'package:qr_scanner/view/qr_code_image_preview.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:qr_scanner/view/qr_pdf_result_page.dart';
-
+import 'package:qr_scanner/view/qr_code_pdf_preview.dart';
 
 final ImagePicker picker = ImagePicker();
 
@@ -17,12 +16,16 @@ Future<void> pickImageFromGallery(
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => QrCodeGallery(imagePath: image.path, onOpen: addItem),
+      builder:
+          (_) => QrCodeImagePreview(imagePath: image.path, onOpen: addItem),
     ),
   );
 }
 
-Future<void> pickPdfFromGallery(BuildContext context, Function(String) addItem) async {
+Future<void> pickPdfFromGallery(
+  BuildContext context,
+  Function(String) addItem,
+) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['pdf'],
@@ -35,10 +38,7 @@ Future<void> pickPdfFromGallery(BuildContext context, Function(String) addItem) 
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => QrPdfResultPage(
-        pdfPath: pdfPath,
-        onOpen: addItem,
-      ),
+      builder: (_) => QrCodePdfPreview(pdfPath: pdfPath, onOpen: addItem),
     ),
   );
 }
