@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:qr_scanner/navigator/nav_router.dart';
-import 'package:qr_scanner/util/image_picker.dart';
+import 'package:qr_scanner/util/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -307,6 +307,39 @@ class _HomePageState extends State<HomePage>
   }
 
   /// ================= SPEED DIAL =================
+  void _showGalleryOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image),
+                title: const Text('Scan from Image'),
+                onTap: () {
+                  Navigator.pop(context);
+                  pickImageFromGallery(context, _addScanItem);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf),
+                title: const Text('Scan from PDF'),
+                onTap: () {
+                  Navigator.pop(context);
+                  pickPdfFromGallery(context, _addScanItem);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildSpeedDial() {
     return SpeedDial(
@@ -344,7 +377,7 @@ class _HomePageState extends State<HomePage>
         SpeedDialChild(
           child: const Icon(Icons.photo),
           label: 'Gallery',
-          onTap: () => pickImageFromGallery(context, _addScanItem),
+          onTap: () => _showGalleryOptions(context),
         ),
       ],
     );
