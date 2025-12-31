@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qr_scanner/view/qr_code_gallery.dart';
+import 'package:qr_scanner/view/qr_code_link_preview.dart';
 
 final ImagePicker picker = ImagePicker();
 

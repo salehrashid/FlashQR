@@ -47,6 +47,15 @@ class _HomePageState extends State<HomePage>
     await _saveScanItems();
   }
 
+  Future<void> _removeGeneratedItem(int index) async {
+    setState(() {
+      generateItems.removeAt(index);
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(generateHistoryKey, generateItems);
+  }
+
   void _removeScanItem(int index) {
     setState(() => scanItems.removeAt(index));
     _saveScanItems();
@@ -78,7 +87,7 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildScanTab() {
     if (scanItems.isEmpty) {
-      return const Center(child: Text("No scan history"));
+      return const Center(child: Text("No scan history. Click + to scan"));
     }
 
     return ListView.builder(
@@ -111,7 +120,7 @@ class _HomePageState extends State<HomePage>
 
   Widget _buildGenerateTab() {
     if (generateItems.isEmpty) {
-      return const Center(child: Text("No generated QR"));
+      return const Center(child: Text("No generated QR. Click + to generate"));
     }
 
     return ListView.builder(
@@ -119,13 +128,31 @@ class _HomePageState extends State<HomePage>
       itemBuilder: (_, index) {
         final url = generateItems[index];
 
-        return ListTile(
-          leading: const Icon(Icons.qr_code),
-          title: Text(url),
-          onTap: () {
-            /// ⬅️ CLICKABLE → kembali ke Generator
-            NavRouter.instance.pushNamed("/qr-code-generator", arguments: url);
+        return Dismissible(
+          key: ValueKey(url),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            color: Colors.red,
+            child: const Icon(Icons.delete, color: Colors.white),
+          ),
+          confirmDismiss: (_) async {
+            final ok = await _confirmDelete();
+            if (ok) _removeGeneratedItem(index);
+            return false;
           },
+          child: ListTile(
+            leading: const Icon(Icons.qr_code),
+            title: Text(url),
+            onTap: () {
+              /// ⬅️ CLICKABLE → kembali ke Generator
+              NavRouter.instance.pushNamed(
+                "/qr-code-generator",
+                arguments: url,
+              );
+            },
+          ),
         );
       },
     );
