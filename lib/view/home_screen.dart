@@ -104,9 +104,6 @@ class _HomePageState extends State<HomePage>
     setState(() {
       if (currentSelected.contains(index)) {
         currentSelected.remove(index);
-        if (currentSelected.isEmpty) {
-          selectionMode = false;
-        }
       } else {
         currentSelected.add(index);
       }
@@ -123,55 +120,67 @@ class _HomePageState extends State<HomePage>
 
   void _selectAll() {
     setState(() {
-      currentSelected
-        ..clear()
-        ..addAll(List.generate(currentItems.length, (i) => i));
+      if (currentSelected.length == currentItems.length) {
+        currentSelected.clear();
+      } else {
+        currentSelected
+          ..clear()
+          ..addAll(List.generate(currentItems.length, (i) => i));
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title:
-            selectionMode
-                ? Text("${currentSelected.length} selected")
-                : const Text("FlashQR"),
-        leading:
-            selectionMode
-                ? IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _exitSelectionMode,
-                )
-                : null,
-        actions:
-            selectionMode
-                ? [
-                  IconButton(
-                    icon: const Icon(Icons.select_all),
-                    onPressed: _selectAll,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: _deleteSelected,
-                  ),
-                ]
-                : [],
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: "Scan History"),
-            Tab(text: "Generate History"),
-          ],
+    return PopScope(
+      canPop: !selectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (selectionMode && !didPop) {
+          _exitSelectionMode();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title:
+              selectionMode
+                  ? Text("${currentSelected.length} selected")
+                  : const Text("FlashQR"),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          leading:
+              selectionMode
+                  ? IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: _exitSelectionMode,
+                  )
+                  : null,
+          actions:
+              selectionMode
+                  ? [
+                    IconButton(
+                      icon: const Icon(Icons.select_all),
+                      onPressed: _selectAll,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed:
+                          currentSelected.isEmpty ? null : _deleteSelected,
+                    ),
+                  ]
+                  : [],
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: "Scan History"),
+              Tab(text: "Generate History"),
+            ],
+          ),
         ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [_buildScanTab(), _buildGenerateTab()],
+        ),
+        floatingActionButton: selectionMode ? null : _buildSpeedDial(),
       ),
-
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildScanTab(), _buildGenerateTab()],
-      ),
-      floatingActionButton: _buildSpeedDial(),
     );
   }
 

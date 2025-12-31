@@ -69,7 +69,10 @@ class _QrPdfResultPageState extends State<QrPdfResultPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('QR from PDF')),
+      appBar: AppBar(
+        title: const Text('QR from PDF'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child:
