@@ -92,6 +92,7 @@ class _HomePageState extends State<HomePage>
 
     return ListView.builder(
       itemCount: scanItems.length,
+
       itemBuilder: (context, index) {
         return Dismissible(
           key: ValueKey(scanItems[index]),
@@ -123,38 +124,49 @@ class _HomePageState extends State<HomePage>
       return const Center(child: Text("No generated QR. Click + to generate"));
     }
 
-    return ListView.builder(
-      itemCount: generateItems.length,
-      itemBuilder: (_, index) {
-        final url = generateItems[index];
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            itemCount: generateItems.length,
+            itemBuilder: (_, index) {
+              final item = generateItems[index];
 
-        return Dismissible(
-          key: ValueKey(url),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            color: Colors.red,
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-          confirmDismiss: (_) async {
-            final ok = await _confirmDelete();
-            if (ok) _removeGeneratedItem(index);
-            return false;
-          },
-          child: ListTile(
-            leading: const Icon(Icons.qr_code),
-            title: Text(url),
-            onTap: () {
-              /// ⬅️ CLICKABLE → kembali ke Generator
-              NavRouter.instance.pushNamed(
-                "/qr-code-generator",
-                arguments: url,
+              return Dismissible(
+                key: ValueKey(item),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  color: Colors.red,
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                confirmDismiss: (_) async {
+                  final ok = await _confirmDelete();
+                  if (ok) _removeGeneratedItem(index);
+                  return false;
+                },
+                child: ListTile(
+                  leading: const Icon(Icons.qr_code),
+                  title: Text(item),
+                  onTap: () async {
+                    final parts = item.split(' • ');
+                    await NavRouter.instance.pushNamed(
+                      "/qr-code-generator",
+                      arguments: {
+                        "index": index,
+                        "name": parts.first,
+                        "url": parts.length > 1 ? parts.last : '',
+                      },
+                    );
+                    await _loadItems();
+                  },
+                ),
               );
             },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -169,15 +181,13 @@ class _HomePageState extends State<HomePage>
           child: const Icon(Icons.qr_code),
           label: 'QR Code Generator',
           onTap: () async {
-            final result = await NavRouter.instance.pushNamed(
-              "/qr-code-generator",
-            );
+            await NavRouter.instance.pushNamed("/qr-code-generator");
 
-            /// kalau generator return URL → refresh tab
-            if (result is String) {
-              await _loadItems();
-              _tabController.animateTo(1);
-            }
+            if (!mounted) return;
+
+            await _loadItems();
+
+            _tabController.animateTo(1);
           },
         ),
         SpeedDialChild(

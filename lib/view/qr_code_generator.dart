@@ -21,8 +21,39 @@ class QRCodeGenerator extends StatefulWidget {
 
 class _QRCodeGeneratorState extends State<QRCodeGenerator> {
   final TextEditingController _urlController = TextEditingController();
+  final _nameController = TextEditingController();
   final GlobalKey _qrKey = GlobalKey();
+
   String _format = 'jpg';
+  String _sanitizeFileName(String input) {
+    return input
+        .trim()
+        .replaceAll(RegExp(r'[^\w\s-]'), '')
+        .replaceAll(' ', '_')
+        .toLowerCase();
+  }
+
+  bool _initialized = false;
+  int? editIndex;
+  bool get isEditMode => editIndex != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_initialized) return;
+
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+    if (args != null) {
+      editIndex = args["index"];
+      _nameController.text = args["name"] ?? '';
+      _urlController.text = args["url"] ?? '';
+    }
+
+    _initialized = true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,18 +88,36 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
 
                   const SizedBox(height: 16),
 
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: "QR Name",
+                      hintText: "E.g: QR Code 1",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
                   Center(
                     child: RepaintBoundary(
                       key: _qrKey,
-                      child: SizedBox(
-                        width: qrSize,
-                        height: qrSize,
-                        child: PrettyQrView.data(
-                          data:
-                              _urlController.text.isEmpty
-                                  ? ' '
-                                  : _urlController.text,
-                          decoration: const PrettyQrDecoration(),
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SizedBox(
+                          width: qrSize,
+                          height: qrSize,
+                          child: PrettyQrView.data(
+                            data:
+                                _urlController.text.isEmpty
+                                    ? ' '
+                                    : _urlController.text,
+                            decoration: const PrettyQrDecoration(),
+                          ),
                         ),
                       ),
                     ),
@@ -96,7 +145,9 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed: _generateAndSave,
-                      child: const Text("Generate & Save"),
+                      child: Text(
+                        isEditMode ? "Update & Save" : "Generate & Save",
+                      ),
                     ),
                   ),
 
@@ -125,10 +176,16 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
 
   Future<void> _generateAndSave() async {
     final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+    final qrName = _nameController.text.trim();
+
+    if (url.isEmpty || qrName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("QR Name and URL are required fields")),
+      );
+      return;
+    }
 
     final granted = await _requestStoragePermission();
-
     if (!granted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Storage permission denied")),
@@ -143,21 +200,25 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
       final image = await boundary.toImage(pixelRatio: 3);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData!.buffer.asUint8List();
+      final qrGenerateHistoryKey = "qr_generate_history";
 
       final dir = await _getFlashQRDir();
-      final fileName = "qr_${DateTime.now().millisecondsSinceEpoch}";
+
+      final safeName = _sanitizeFileName(qrName);
+
       late final String savedPath;
 
       if (_format == 'pdf') {
-        savedPath = "${dir.path}/$fileName.pdf";
+        savedPath = "${dir.path}/$safeName.pdf";
 
         final pdf = pw.Document();
         final imgPdf = pw.MemoryImage(pngBytes);
+
         pdf.addPage(pw.Page(build: (_) => pw.Center(child: pw.Image(imgPdf))));
 
         await File(savedPath).writeAsBytes(await pdf.save());
       } else {
-        savedPath = "${dir.path}/$fileName.jpg";
+        savedPath = "${dir.path}/$safeName.jpg";
 
         final jpgBytes = _convertPngToJpgWithWhiteBg(pngBytes);
         await File(savedPath).writeAsBytes(jpgBytes);
@@ -165,13 +226,22 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
 
       await MediaScanner.loadMedia(path: savedPath);
 
-      debugPrint("Saved at: $savedPath");
-
-      /// save history generate
       final prefs = await SharedPreferences.getInstance();
-      final history = prefs.getStringList('qr_generate_history') ?? [];
-      history.insert(0, url);
-      await prefs.setStringList('qr_generate_history', history);
+      final history = prefs.getStringList(qrGenerateHistoryKey) ?? [];
+
+      final value = "$qrName • $url";
+
+      if (isEditMode) {
+        // update
+        if (editIndex! < history.length) {
+          history[editIndex!] = value;
+        }
+      } else {
+        // create
+        history.insert(0, value);
+      }
+
+      await prefs.setStringList(qrGenerateHistoryKey, history);
 
       if (!mounted) return;
 
@@ -179,9 +249,10 @@ class _QRCodeGeneratorState extends State<QRCodeGenerator> {
         const SnackBar(content: Text("Saved to Download/FlashQR")),
       );
 
-      Navigator.pop(context, url);
-    } catch (e) {
+      Navigator.pop(context, {"name": qrName, "url": url});
+    } catch (e, s) {
       debugPrint("Error: $e");
+      debugPrintStack(stackTrace: s);
     }
   }
 
