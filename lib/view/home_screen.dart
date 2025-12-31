@@ -22,6 +22,18 @@ class _HomePageState extends State<HomePage>
   List<String> scanItems = [];
   List<String> generateItems = [];
 
+  bool selectionMode = false;
+
+  final Set<int> selectedScanIndexes = {};
+  final Set<int> selectedGenerateIndexes = {};
+
+  bool get isScanTab => _tabController.index == 0;
+
+  Set<int> get currentSelected =>
+      isScanTab ? selectedScanIndexes : selectedGenerateIndexes;
+
+  List<String> get currentItems => isScanTab ? scanItems : generateItems;
+
   @override
   void initState() {
     super.initState();
@@ -56,16 +68,95 @@ class _HomePageState extends State<HomePage>
     await prefs.setStringList(generateHistoryKey, generateItems);
   }
 
+  Future<void> _deleteSelected() async {
+    final ok = await _confirmDelete();
+    if (!ok) return;
+
+    setState(() {
+      final sortedIndexes = currentSelected.toList()..sort((a, b) => b - a);
+      for (final index in sortedIndexes) {
+        currentItems.removeAt(index);
+      }
+      currentSelected.clear();
+      selectionMode = false;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      isScanTab ? scanHistoryKey : generateHistoryKey,
+      currentItems,
+    );
+  }
+
   void _removeScanItem(int index) {
     setState(() => scanItems.removeAt(index));
     _saveScanItems();
+  }
+
+  void _enterSelectionMode(int index) {
+    setState(() {
+      selectionMode = true;
+      currentSelected.add(index);
+    });
+  }
+
+  void _toggleSelection(int index) {
+    setState(() {
+      if (currentSelected.contains(index)) {
+        currentSelected.remove(index);
+        if (currentSelected.isEmpty) {
+          selectionMode = false;
+        }
+      } else {
+        currentSelected.add(index);
+      }
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      selectionMode = false;
+      selectedScanIndexes.clear();
+      selectedGenerateIndexes.clear();
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      currentSelected
+        ..clear()
+        ..addAll(List.generate(currentItems.length, (i) => i));
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("FlashQR"),
+        title:
+            selectionMode
+                ? Text("${currentSelected.length} selected")
+                : const Text("FlashQR"),
+        leading:
+            selectionMode
+                ? IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _exitSelectionMode,
+                )
+                : null,
+        actions:
+            selectionMode
+                ? [
+                  IconButton(
+                    icon: const Icon(Icons.select_all),
+                    onPressed: _selectAll,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: _deleteSelected,
+                  ),
+                ]
+                : [],
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         bottom: TabBar(
           controller: _tabController,
@@ -75,6 +166,7 @@ class _HomePageState extends State<HomePage>
           ],
         ),
       ),
+
       body: TabBarView(
         controller: _tabController,
         children: [_buildScanTab(), _buildGenerateTab()],
@@ -92,25 +184,51 @@ class _HomePageState extends State<HomePage>
 
     return ListView.builder(
       itemCount: scanItems.length,
-
       itemBuilder: (context, index) {
         return Dismissible(
           key: ValueKey(scanItems[index]),
-          direction: DismissDirection.endToStart,
+
+          direction:
+              selectionMode
+                  ? DismissDirection.none
+                  : DismissDirection.endToStart,
+
           background: Container(
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             color: Colors.red,
             child: const Icon(Icons.delete, color: Colors.white),
           ),
-          confirmDismiss: (_) async {
-            final ok = await _confirmDelete();
-            if (ok) _removeScanItem(index);
-            return false;
-          },
+
+          confirmDismiss:
+              selectionMode
+                  ? null
+                  : (_) async {
+                    final ok = await _confirmDelete();
+                    if (ok) _removeScanItem(index);
+                    return false;
+                  },
+
           child: ListTile(
+            leading:
+                selectionMode
+                    ? Checkbox(
+                      value: selectedScanIndexes.contains(index),
+                      onChanged: (_) => _toggleSelection(index),
+                    )
+                    : null,
+
             title: Text(scanItems[index]),
-            onTap: () => _openDialog(scanItems[index]),
+
+            onTap: () {
+              if (selectionMode) {
+                _toggleSelection(index);
+              } else {
+                _openDialog(scanItems[index]);
+              }
+            },
+
+            onLongPress: () => _enterSelectionMode(index),
           ),
         );
       },
@@ -134,22 +252,39 @@ class _HomePageState extends State<HomePage>
 
               return Dismissible(
                 key: ValueKey(item),
-                direction: DismissDirection.endToStart,
+                direction:
+                    selectionMode
+                        ? DismissDirection.none
+                        : DismissDirection.endToStart,
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   color: Colors.red,
                   child: const Icon(Icons.delete, color: Colors.white),
                 ),
-                confirmDismiss: (_) async {
-                  final ok = await _confirmDelete();
-                  if (ok) _removeGeneratedItem(index);
-                  return false;
-                },
+                confirmDismiss:
+                    selectionMode
+                        ? null
+                        : (_) async {
+                          final ok = await _confirmDelete();
+                          if (ok) _removeGeneratedItem(index);
+                          return false;
+                        },
                 child: ListTile(
-                  leading: const Icon(Icons.qr_code),
+                  leading:
+                      selectionMode
+                          ? Checkbox(
+                            value: selectedGenerateIndexes.contains(index),
+                            onChanged: (_) => _toggleSelection(index),
+                          )
+                          : const Icon(Icons.qr_code),
                   title: Text(item),
                   onTap: () async {
+                    if (selectionMode) {
+                      _toggleSelection(index);
+                      return;
+                    }
+
                     final parts = item.split(' • ');
                     await NavRouter.instance.pushNamed(
                       "/qr-code-generator",
@@ -161,6 +296,7 @@ class _HomePageState extends State<HomePage>
                     );
                     await _loadItems();
                   },
+                  onLongPress: () => _enterSelectionMode(index),
                 ),
               );
             },
