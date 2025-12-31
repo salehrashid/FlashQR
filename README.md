@@ -88,6 +88,9 @@ Feel free to open issues or submit pull requests.
 
 ---
 
-## 📄 License
+## 📄 Version
 
-This project is licensed under the **MIT License**.
+```bash
+Dart 3.10.0
+Flutter 3.38.2
+```
