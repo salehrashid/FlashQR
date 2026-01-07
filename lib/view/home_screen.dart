@@ -361,19 +361,42 @@ class _HomePageState extends State<HomePage>
     return await showDialog<bool>(
           context: context,
           builder:
-              (_) => AlertDialog(
-                title: const Text("Delete item?"),
-                content: const Text("This action cannot be undone."),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text("Cancel"),
+              (_) => Dialog(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(left: 13),
+                        child: const Text(
+                          'Delete item?',
+                          style: TextStyle(fontSize: 22),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 13),
+                        child: const Text("This action cannot be undone."),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text("Cancel"),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text("Delete"),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text("Delete"),
-                  ),
-                ],
+                ),
               ),
         ) ??
         false;
