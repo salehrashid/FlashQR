@@ -77,6 +77,28 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  Future<void> _copySelected() async {
+    if (currentSelected.isEmpty) return;
+
+    final indexes = currentSelected.toList()..sort();
+    final text = indexes.map((i) => currentItems[i]).join('\n');
+
+    await Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Copied ${indexes.length} ${indexes.length == 1 ? 'item' : 'items'}',
+        ),
+      ),
+    );
+
+    setState(() {
+      selectionMode = false;
+      selectedScanIndexes.clear();
+      selectedGenerateIndexes.clear();
+    });
+  }
+
   Future<void> _deleteSelected() async {
     final ok = await _confirmDelete();
     if (!ok) return;
@@ -178,6 +200,10 @@ class _HomePageState extends State<HomePage>
                 IconButton(
                   icon: const Icon(Icons.select_all),
                   onPressed: _selectAll,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy),
+                  onPressed: currentSelected.isEmpty ? null : _copySelected,
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete),
