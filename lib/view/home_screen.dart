@@ -362,7 +362,7 @@ class _HomePageState extends State<HomePage>
       context: context,
       builder:
           (_) => AlertDialog(
-            title: const Text("QR Data"),
+            title: const Text("Open in Browser"),
             content: Text(value),
             actions: [
               TextButton(

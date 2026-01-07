@@ -4,8 +4,17 @@ import 'navigator/nav_router.dart';
 import 'view/home_screen.dart';
 import 'view/qr_code_generator.dart';
 import 'view/qr_code_scanner.dart';
+import 'package:flutter/services.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); 
+
+  // Lock the app to portrait mode (both up and down positions)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   runApp(const MyApp());
 }
 

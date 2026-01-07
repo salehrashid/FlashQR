@@ -44,7 +44,7 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
 
   Widget _buildResultDialog(String value) {
     return AlertDialog(
-      title: const Text("QR Code Result"),
+      title: const Text("Open in Browser"),
       content: Text(value),
       actions: [
         TextButton(
