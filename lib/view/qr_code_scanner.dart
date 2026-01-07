@@ -35,12 +35,17 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
     }
   }
 
-  void _showResultDialog(String value) {
-    showDialog(
+  Future<void> _showResultDialog(String value) async {
+    await showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => _buildResultDialog(value),
     );
+
+    if (!mounted) return;
+
+    setState(() => _isScanned = false);
+    await _controller.start();
   }
 
   Widget _buildResultDialog(String value) {
