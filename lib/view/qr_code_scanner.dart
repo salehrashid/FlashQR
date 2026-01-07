@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/scanner_overlay.dart';
@@ -43,20 +44,54 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
   }
 
   Widget _buildResultDialog(String value) {
-    return AlertDialog(
-      title: const Text("Open in Browser"),
-      content: Text(value),
-      actions: [
-        TextButton(
-          onPressed: _handleCancel,
-          child: const Text("Cancel"),
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 13),
+              child: const Text(
+                'Open in Browser',
+                style: TextStyle(fontSize: 22),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.only(left: 13),
+              child: Text(value),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => _handleCancel(),
+                  child: const Text('Cancel'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => _handleCopy(value),
+                  child: const Text("Copy"),
+                ),
+                TextButton(
+                  onPressed: () => _handleOpen(value),
+                  child: const Text("Open"),
+                ),
+              ],
+            ),
+          ],
         ),
-        TextButton(
-          onPressed: () => _handleOpen(value),
-          child: const Text("Open"),
-        ),
-      ],
+      ),
     );
+  }
+
+  void _handleCopy(String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
   }
 
   Future<void> _handleCancel() async {
@@ -69,13 +104,16 @@ class _QRCodeScannerState extends State<QRCodeScanner> {
   Future<void> _handleOpen(String value) async {
     final formattedUrl = QRScannerService.formatUrl(value);
     final uri = Uri.parse(formattedUrl);
-    
+
     await launchUrl(uri, mode: LaunchMode.externalApplication);
 
     if (!mounted) return;
 
     Navigator.of(context).pop(); // Close dialog
-    Navigator.of(context, rootNavigator: true).pop(formattedUrl); // Close scanner
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).pop(formattedUrl); // Close scanner
   }
 
   Future<void> _toggleTorch() async {

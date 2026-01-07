@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_scanner/navigator/nav_router.dart';
 import 'package:qr_scanner/services/storage_service.dart';
 import 'package:qr_scanner/widgets/speed_dial_menu.dart';
@@ -16,6 +17,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  String? qrValue;
 
   List<String> scanItems = [];
   List<String> generateItems = [];
@@ -50,7 +53,7 @@ class _HomePageState extends State<HomePage>
   Future<void> _loadItems() async {
     final scan = await StorageService.loadScanHistory();
     final generate = await StorageService.loadGenerateHistory();
-    
+
     setState(() {
       scanItems = scan;
       generateItems = generate;
@@ -184,10 +187,7 @@ class _HomePageState extends State<HomePage>
               : [],
       bottom: TabBar(
         controller: _tabController,
-        tabs: const [
-          Tab(text: "Scan History"),
-          Tab(text: "Generate History"),
-        ],
+        tabs: const [Tab(text: "Scan History"), Tab(text: "Generate History")],
       ),
     );
   }
@@ -315,11 +315,7 @@ class _HomePageState extends State<HomePage>
     final qrItem = QRItem.fromStorageString(item);
     await NavRouter.instance.pushNamed(
       "/qr-code-generator",
-      arguments: {
-        "index": index,
-        "name": qrItem.name,
-        "url": qrItem.url,
-      },
+      arguments: {"index": index, "name": qrItem.name, "url": qrItem.url},
     );
     await _loadItems();
   }
@@ -361,24 +357,58 @@ class _HomePageState extends State<HomePage>
     showDialog(
       context: context,
       builder:
-          (_) => AlertDialog(
-            title: const Text("Open in Browser"),
-            content: Text(value),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
+          (_) => Dialog(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 13),
+                    child: const Text(
+                      'Open in Browser',
+                      style: TextStyle(fontSize: 22),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 13),
+                    child: Text(value),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => _handleCopy(value),
+                        child: const Text("Copy"),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _launchURL(value);
+                        },
+                        child: const Text("Open"),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _launchURL(value);
-                },
-                child: const Text("Open"),
-              ),
-            ],
+            ),
           ),
     );
+  }
+
+  void _handleCopy(String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
   }
 
   void _launchURL(String urlString) async {
